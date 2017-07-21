@@ -1,4 +1,10 @@
 #!/bin/sh
+#
+# Client script to do a port knock using nmap.
+#
+# Edit HOST and PORT below for defaults, otherwise provide the host and ports
+# on the command line.
+#
 
 if [ -z "$HOSTS" ]
 then
