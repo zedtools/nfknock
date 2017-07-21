@@ -2,25 +2,38 @@
 #
 # Client script to do a port knock using nmap.
 #
-# Edit HOST and PORT below for defaults, otherwise provide the host and ports
-# on the command line.
+# Edit DEFAULT_HOST and DEFAULT_PORTS below for defaults, otherwise provide
+# the host and ports on the command line or via environment variables.
 #
 
+DEFAULT_HOST=default-host.net
+DEFAULT_PORTS=10000,10001,10002
+
+# Allow HOST and PORTS to be set via environment variables. If not set, then
+# initialize to default values.
 if [ -z "$HOSTS" ]
 then
-	HOST=default-host.net
+	HOST=$DEFAULT_HOST
 fi
 
 if [ -z "$PORTS" ]
 then
-	PORTS=10000,10001,10002
+	PORTS=$DEFAULT_PORTS
 fi
 
+# Allow host and ports to be provided by command line. Any values from the
+# command line override both the environment variables and the defaults.
 if [ -n "$1" ]
 then
 	HOST=$1
 fi
-	
+
+if [ -n "$2" ]
+then
+	PORTS=$2
+fi
+
+# Detect if IPv6 address was passed in
 if echo $HOST | grep : > /dev/null
 then
 	echo "Detected IPv6 address: $HOST"
