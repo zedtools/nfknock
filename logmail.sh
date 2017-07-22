@@ -25,5 +25,5 @@ then
 
 	echo -e "Received successful knock from IP: $IP\n\nLog entry: $LOG\n\nWHOIS:\n\n$WHOIS_DATA" | s-nail -r "$MAILFROM" -s "$(hostname): Knock from $IP" -S smtp=$SMTP_SERVER "$MAILTO"
 else
-	echo "Error: environment varialbes SMTP_SERVER, MAILFROM and MAILTO must be set" >> $ERR_LOG
+	echo "Error: environment variables SMTP_SERVER, MAILFROM and MAILTO must be set" >> $ERR_LOG
 fi
