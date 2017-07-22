@@ -27,11 +27,12 @@ Requirements:
 - python 3.3+ (tested with python 3.4)
 
 The following are additional requirements for logging:
-- Heirloom mailx
+- S-nail
 - mawk
+- whois
 
-On Debian, all these requirements can be installed by:
-- sudo apt-get install iptables iptables-persistent python3 heirloom-mailx mawk
+On Debian 9, some of these are already present. Missing requirements can be installed by:
+- sudo apt-get install iptables-persistent s-nail whois
 
 Port knocking with iptables setup instructions:
 1. Edit iptables-knock.cfg to edit port knocking configuration.
