@@ -31,7 +31,7 @@ DELAY=0.5
 # cause nmap to attempt a TCP SYN scan, or fall back to a TCP connect scan if
 # root privileges are missing. Set this to -sS to for a TCP SYN scan.
 # Note that using -Ss requires root privileges.
-#TCP_SCANTYPE=-Ss
+#TCP_SCANTYPE=-sS
 
 # Allow HOST and PORTS to be set via environment variables. If not set, then
 # initialize to default values.
