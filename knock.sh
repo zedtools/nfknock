@@ -119,8 +119,9 @@ do
 		tcp_args=${NMAP_TCP_ARGS[@]}
 	fi
 
-	# call nmap and then sleep DELAY seconds in between each knock
-	echo nmap -v $IPV6_FLAG $scantype ${NMAP_ARGS[@]} ${tcp_args[@]} -p $port $HOST
-	nmap -v $IPV6_FLAG $scantype ${NMAP_ARGS[@]} ${tcp_args[@]} -p $port $HOST
+	# Call nmap and then sleep DELAY seconds in between each knock.
+	# Note that if nmap needs to run as sudo (for -sS or -sU), and is not,
+	# it will print an error to stderr.
+	nmap $IPV6_FLAG $scantype ${NMAP_ARGS[@]} ${tcp_args[@]} -p $port $HOST >> /dev/null
 	sleep $DELAY
 done
