@@ -6,6 +6,7 @@ import subprocess
 import socket
 import ipaddress
 import configparser
+import traceback
 
 def CheckRoot():
 	if getpass.getuser() != "root":
@@ -22,6 +23,40 @@ def input_verify(msg):
 		user_input = input(msg + " (y/n)? ").lower()
 
 	return user_input == 'y'
+
+#
+# A class to represent a 'knock'.
+# It stores both a port and protocol, and is initialized from a string
+# representation.
+#
+class PortKnock:
+	TCP = 'tcp'
+	UDP = 'udp'
+
+	# portspec can be (where 'nnn' is a port number in string format):
+	# - 'nnn' - a TCP port
+	# - 'T:nnn' - a TCP port ('T' can be upper or lower case)
+	# - 'U:nnn' - a UDP port ('U' can be upper or lower case)
+	def __init__(self, portspec):
+		try:
+			port_array = portspec.rpartition(':')
+			if port_array[1]:
+				protocolspec = port_array[0]
+
+				if protocolspec.lower() == 't':
+					self.protocol = PortKnock.TCP
+				elif protocolspec.lower() == 'u':
+					self.protocol = PortKnock.UDP
+				else:
+					raise ValueError("Invalid protcol (expected 'U'/'P'): '{0}'".format(protocolspec))
+			else:
+				self.protocol = PortKnock.TCP
+
+			self.port = int(port_array[2])
+		except ValueError as e:
+			print('Exception flew by!')
+			traceback.print_exc()
+			raise ValueError("Invalid port definition: '{0}'".format(portspec))
 
 class IPTables:
 	IPv4 = socket.AF_INET
@@ -97,9 +132,9 @@ class IPTables:
 		config.read(config_file)
 
 		# knock sequence:
-		# split on whitespace and convert each value to int
+		# split on whitespace and convert each value to a PortKnock object
 		sequence = list(map(
-			lambda x: int(x),
+			lambda x: PortKnock(x),
 			config.get('knock', 'sequence', fallback='').split()
 		))
 
@@ -111,9 +146,9 @@ class IPTables:
 		sequence_timeout = int(config.get('knock', 'sequence_timeout', fallback=IPTables.DEFAULT_SEQUENCE_TIMEOUT))
 
 		# the port to open after the knock sequence is received
-		door = int(config.get('knock', 'door', fallback=0))
+		door = PortKnock(config.get('knock', 'door', fallback='0'))
 
-		if not door:
+		if not door.port:
 			raise ValueError('Configuration option "door" must be set under [knock]')
 
 		# how long the door stays open if no connection is received
@@ -183,7 +218,7 @@ class IPTables:
 		self.allowed_networks = network_list
 		
 
-	def SetKnockingPorts(self, knock_sequence=[], unlock_port=22):
+	def SetKnockingPorts(self, knock_sequence=[], unlock_port=PortKnock("T:22")):
 		self.knock_sequence = knock_sequence
 		self.unlock_port = unlock_port
 
@@ -282,7 +317,7 @@ class IPTables:
 		for rule in rules:
 			self.AppendToChain(chain, rule)
 	
-	def CreateGateRules(self, gate, port, prev_label=None, new_label=None, fail_chain=None, success_chain=None):
+	def CreateGateRules(self, gate, protocol, port, prev_label=None, new_label=None, fail_chain=None, success_chain=None):
 		strPort = str(port)
 
 		# Check for label from previous gate, If found, remove it and proceed to next rule
@@ -300,7 +335,7 @@ class IPTables:
 		# If the correct port is knocked, apply the new label if needed
 		if new_label is not None:
 			self.AppendToChain(gate, [
-				"--protocol", "tcp",
+				"--protocol", protocol,
 				"--dport", strPort,
 				"--match", "recent",
 				"--set", "--name", new_label,
@@ -352,11 +387,12 @@ class IPTables:
 		# was the first port of a new sequence. If the first port does not match, GATE1 will log the packet.
 		for i in range(len(self.CUSTOM_GATE_CHAINS)):
 			# For each gate, check to see if we got the next port in the knocking sequence
-			gate = self.CUSTOM_GATE_CHAINS[i]      # current gate
-			port = self.knock_sequence[i]          # expected port
-			new_label = self.CUSTOM_AUTH_LABELS[i] # label to apply if the expected port is received
-			prev_label = None                      # previous label to check (None = do not check for previous label)
-			fail_chain = self.LOGDROP              # for GATE1, any unexpected packet is logged
+			gate = self.CUSTOM_GATE_CHAINS[i]          # current gate
+			protocol = self.knock_sequence[i].protocol # expected protocol
+			port = self.knock_sequence[i].port         # expected port
+			new_label = self.CUSTOM_AUTH_LABELS[i]     # label to apply if the expected port is received
+			prev_label = None                          # previous label to check (None = do not check for previous label)
+			fail_chain = self.LOGDROP                  # for GATE1, any unexpected packet is logged
 			if i > 0:
 				prev_label = self.CUSTOM_AUTH_LABELS[i - 1] # expect to see label from previous gate
 				fail_chain = self.CUSTOM_GATE_CHAINS[0]     # unexpected packet: jump back to GATE1 to reset the sequence
@@ -367,13 +403,14 @@ class IPTables:
 			# - apply the new label to indicate that this gate has been passed
 			# - jump back to the first gate to either reset the knocking sequence, or log the packet if we
 			#   are already at the first gate
-			self.CreateGateRules(gate, port, prev_label=prev_label, new_label=new_label, fail_chain=fail_chain)
+			self.CreateGateRules(gate, protocol, port, prev_label=prev_label, new_label=new_label, fail_chain=fail_chain)
 
-		# This rule checks the AUTH label to verify that we got through all the above gats. If so, allow the unlock_port
+		# This rule checks the AUTH label to verify that we got through all the above gates. If so, allow the unlock_port
 		# through, otherwise go back to the first gate
 		self.CreateGateRules(
 			self.PASSED,
-			self.unlock_port,
+			self.unlock_port.protocol,
+			self.unlock_port.port,
 			prev_label=self.CUSTOM_AUTH_LABELS[-1],
 			fail_chain=self.CUSTOM_GATE_CHAINS[0],
 			success_chain=self.LOGACCEPT
