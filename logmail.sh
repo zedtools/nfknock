@@ -9,7 +9,8 @@
 
 # parameters passed in by watchknock.awk
 IP=$1
-LOG=$2
+MSG=$2
+LOG=$3
 
 DIRNAME=$(dirname $0)
 CFG_FILE=$DIRNAME/logmail.cfg
@@ -23,7 +24,7 @@ then
 	# look up whois data for the remote client
 	WHOIS_DATA=$(whois $IP)
 
-	echo -e "Received successful knock from IP: $IP\n\nLog entry: $LOG\n\nWHOIS:\n\n$WHOIS_DATA" | s-nail -r "$MAILFROM" -s "$(hostname): Knock from $IP" -S smtp=$SMTP_SERVER "$MAILTO"
+	echo -e "$MSG [SRC = $IP]\n\nLog entry: $LOG\n\nWHOIS:\n\n$WHOIS_DATA" | s-nail -r "$MAILFROM" -s "$(hostname): Knock from $IP" -S smtp=$SMTP_SERVER "$MAILTO"
 else
 	echo "Error: environment variables SMTP_SERVER, MAILFROM and MAILTO must be set" >> $ERR_LOG
 fi

@@ -39,6 +39,8 @@ Port knocking with iptables setup instructions:
 2. Run iptables-knock.py as root or with sudo. This will automatically set up
    the iptables rules.
 
+To temporarily allow networks without adding them to iptables-knock.cfg, use the command transient.py.
+
 For logging, complete the following additional steps:
 1. Edit logmail.cfg and configure your email settings
 2. Configure watchknock.sh to run on boot. The easiest way to do this is to

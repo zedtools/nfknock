@@ -94,7 +94,8 @@ class IPTables:
 
 		self.PREKNOCK = "PREKNOCK"
 		self.KNOCKING = "KNOCKING"
-		self.LOGACCEPT = "LOGACCEPT"
+		self.LOGACCEPT_KNOCK = "LOGACCEPTKNOCK"
+		self.LOGACCEPT_PREKNOCK = "LOGACCEPTPREKNOCK"
 		self.LOGDROP = "LOGDROP"
 		self.PASSED = "PASSED"
 
@@ -107,7 +108,8 @@ class IPTables:
 		self.CUSTOM_CHAINS = [
 			self.PREKNOCK,
 			self.KNOCKING,
-			self.LOGACCEPT,
+			self.LOGACCEPT_KNOCK,
+			self.LOGACCEPT_PREKNOCK,
 			self.LOGDROP,
 			self.PASSED
 		]
@@ -122,13 +124,15 @@ class IPTables:
 		# the logging chains - each of these log the packet, then jump
 		# to the chain specified in self.log_target
 		self.LOG_CHAINS = [
-			self.LOGACCEPT,
+			self.LOGACCEPT_KNOCK,
+			self.LOGACCEPT_PREKNOCK,
 			self.LOGDROP
 		]
 
 		# after logging, jump to target chain
 		self.log_target = {
-			self.LOGACCEPT: "ACCEPT",
+			self.LOGACCEPT_KNOCK: "ACCEPT",
+			self.LOGACCEPT_PREKNOCK: "ACCEPT",
 			self.LOGDROP: "DROP"
 		}
 
@@ -267,7 +271,7 @@ class IPTables:
 		for addr in network_list:
 			# Add each network to the self.PREKNOCK chain
 			rules.append([
-				"--source", addr, "--jump", "ACCEPT"
+				"--source", addr, "--jump", self.LOGACCEPT_PREKNOCK
 			])
 
 
@@ -622,7 +626,7 @@ class IPTables:
 			self.unlock_port.port,
 			prev_label=self.CUSTOM_AUTH_LABELS[-1],
 			fail_chain=self.CUSTOM_GATE_CHAINS[0],
-			success_chain=self.LOGACCEPT
+			success_chain=self.LOGACCEPT_KNOCK
 		)
 
 		# Set up the KNOCKING chain. Each rules checks to see if an AUTH label is
