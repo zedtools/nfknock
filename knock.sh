@@ -30,8 +30,61 @@ DELAY=0.5
 # The nmap scan type For a TCP port, By default (a blank value), this will
 # cause nmap to attempt a TCP SYN scan, or fall back to a TCP connect scan if
 # root privileges are missing. Set this to -sS to for a TCP SYN scan.
-# Note that using -Ss requires root privileges.
+# Note that using -sS requires root privileges.
 #TCP_SCANTYPE=-sS
+
+# Return true (0) if the argument is a valid IPv4 address, e.g. 10.0.0.1
+function isIPv4Address
+{
+	ipv4=$(echo $1 | awk '/^[0-9.]+$/ { print $1 }')
+	if [[ -n "$ipv4" ]]
+	then
+		true
+	else
+		false
+	fi
+}
+
+# Return true (0) if the argument is a valid IPv5 address, e.g. fe80::1
+function isIPv6Address
+{
+	ipv6=$(echo $1 | awk '/^[0-9A-Fa-f:]+$/ { print $1 }')
+	if [[ -n "$ipv6" ]]
+	then
+		true
+	else
+		false
+	fi
+}
+
+# Do a DNS lookup on the first argument and return the IP address.
+# If an IP address is passed in, return it unchanged.
+function getIPAddress
+{
+	name=$1
+
+	if isIPv4Address $name
+	then
+		echo -n $name
+	elif isIPv6Address $name
+	then
+		echo -n $name
+	else
+		lookup=$(host $name)
+		ipv4=$(echo $lookup | awk '/has address/ { print $4 }')
+		ipv6=$(echo $lookup | awk '/has IPv6 address/ { print $	5 }')
+
+		if [[ -n "$ipv4" ]]
+		then
+			echo -n $ipv4
+		elif [[ -n "ipv6" ]]
+		then
+			echo -n $ipv6
+		else
+			echo -n ""
+		fi
+	fi
+}
 
 # Allow HOST and PORTS to be set via environment variables. If not set, then
 # initialize to default values.
@@ -58,9 +111,10 @@ then
 fi
 
 # Detect if IPv6 address was passed in
-if echo $HOST | grep : > /dev/null
+IP_ADDR=$(getIPAddress $HOST)
+if isIPv6Address $IP_ADDR
 then
-	echo "Detected IPv6 address: $HOST"
+	echo "Detected IPv6 address: $HOST ($IP_ADDR)"
 	IPV6_FLAG=-6
 fi
 
