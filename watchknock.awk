@@ -14,11 +14,19 @@
 		ip = pattern
 	}
 
+	msg="Unexpected LOGACCEPT entry"
+	if (match($0, "LOGACCEPTKNOCK")) {
+		msg="Received successful knock"
+	}
+	else if (match($0, "LOGACCEPTPREKNOCK")) {
+		msg="Allowed connection from transient network"
+	}
+
 	# strip off the leading "SRC=" to get the IP address
 	sub(/SRC=/, "", ip);
 
 	# call logmail.sh with the IP address, as well as the full line from
 	# the log file
-	cmd=sprintf("\"%s/logmail.sh\" \"%s\" \"%s\"", BASEDIR, ip, $0);
+	cmd=sprintf("\"%s/logmail.sh\" \"%s\" \"%s\" \"%s\"", BASEDIR, ip, msg, $0);
 	system(cmd);
 }
