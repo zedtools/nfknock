@@ -24,7 +24,7 @@ then
 	# look up whois data for the remote client
 	WHOIS_DATA=$(whois $IP)
 
-	echo -e "$MSG [SRC = $IP]\n\nLog entry: $LOG\n\nWHOIS:\n\n$WHOIS_DATA" | s-nail -r "$MAILFROM" -s "$(hostname): Knock from $IP" -S smtp=$SMTP_SERVER "$MAILTO"
+	echo -e "$MSG [SRC = $IP]\n\nLog entry: $LOG\n\nWHOIS:\n\n$WHOIS_DATA" | s-nail -r "$MAILFROM" -s "$(hostname): Knock from $IP" -S mta=$SMTP_SERVER "$MAILTO"
 else
 	echo "Error: environment variables SMTP_SERVER, MAILFROM and MAILTO must be set" >> $ERR_LOG
 fi
