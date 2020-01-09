@@ -34,6 +34,8 @@ The following are additional requirements for logging:
 On Debian 9, some of these are already present. Missing requirements can be installed by:
 - sudo apt-get install iptables-persistent s-nail whois
 
+For the cfg files below, sample cfg files can be found under the directory cfg-sample.
+
 Port knocking with iptables setup instructions:
 1. Edit iptables-knock.cfg to edit port knocking configuration.
 2. Run iptables-knock.py as root or with sudo. This will automatically set up
