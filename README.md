@@ -1,11 +1,12 @@
-# iptables-knock
-Port knocking via iptables
+# nfknock
+Port knocking via nftables
 -------------
 
-This package configured iptables rules for port knocking.
+This package configures firewall rules for port knocking. Both nftables and
+iptables are supported.
 
 There are two parts to this package:
-1. A script to set up the iptables rules that allow a hidden port to be opened
+1. A script to set up the firewall rules that allow a hidden port to be opened
    after a port-knock sequence is received.
 2. A second script that runs in the background, monitoring the log for port
    knocking attempts. Every successful port knock will send an email
@@ -22,9 +23,14 @@ will get a notification as soon as this first layer is penerated, allowing you
 to change the port-knock sequence.
 
 Requirements:
+- python 3.3+ (tested with python 3.4)
+
+Requirements for iptables:
 - iptables
 - iptables-persistent (for Debian-based systems)
-- python 3.3+ (tested with python 3.4)
+
+Requirements for nftables:
+- nftables
 
 The following are additional requirements for logging:
 - S-nail
@@ -32,16 +38,16 @@ The following are additional requirements for logging:
 - whois
 
 On Debian 9, some of these are already present. Missing requirements can be installed by:
-- sudo apt-get install iptables-persistent s-nail whois
+- sudo apt-get install s-nail whois
 
 For the cfg files below, sample cfg files can be found under the directory cfg-sample.
 
-Port knocking with iptables setup instructions:
-1. Edit iptables-knock.cfg to edit port knocking configuration.
-2. Run iptables-knock.py as root or with sudo. This will automatically set up
-   the iptables rules.
+Port knocking setup instructions:
+1. Edit nfknock.cfg to edit port knocking configuration.
+2. Run nftables-knock.py or iptables-knock.py as root or with sudo. This will
+   automatically set up the firewall.
 
-To temporarily allow networks without adding them to iptables-knock.cfg, use the command transient.py.
+To temporarily allow networks without adding them to nfknock.cfg, use the command transient.py.
 
 For logging, complete the following additional steps:
 1. Edit logmail.cfg and configure your email settings
