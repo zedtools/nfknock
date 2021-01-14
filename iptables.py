@@ -1,46 +1,10 @@
 #!/usr/bin/env python3
 
-import getpass
 import sys
 import subprocess
-import socket
 import ipaddress
-import configparser
-import traceback
 
-#
-# A class to represent either a 'knock', or the final port to be unlocked.
-# It stores both a port and protocol, and is initialized from a string
-# representation.
-#
-class PortSpec:
-	TCP = 'tcp'
-	UDP = 'udp'
-
-	# portspec can be (where 'nnn' is a port number in string format):
-	# - 'nnn' - a TCP port
-	# - 'T:nnn' - a TCP port ('T' can be upper or lower case)
-	# - 'U:nnn' - a UDP port ('U' can be upper or lower case)
-	def __init__(self, portspec):
-		try:
-			port_array = portspec.rpartition(':')
-			if port_array[1]:
-				protocolspec = port_array[0]
-
-				if protocolspec.lower() == 't':
-					self.protocol = PortSpec.TCP
-				elif protocolspec.lower() == 'u':
-					self.protocol = PortSpec.UDP
-				else:
-					raise ValueError("Invalid protcol (expected 'U'/'P'): '{0}'".format(protocolspec))
-			else:
-				self.protocol = PortSpec.TCP
-
-			self.port = int(port_array[2])
-		except ValueError as e:
-			print('Exception flew by!')
-			traceback.print_exc()
-			raise ValueError("Invalid port definition: '{0}'".format(portspec))
+from config import Config, PortSpec
 
 #
 # The main IPTables class.
@@ -50,15 +14,6 @@ class PortSpec:
 # rules across reboots.
 #
 class IPTables:
-	IPv4 = socket.AF_INET
-	IPv6 = socket.AF_INET6
-	DEFAULT_IPV4_SAVE = "/etc/iptables/rules.v4"
-	DEFAULT_IPV6_SAVE = "/etc/iptables/rules.v6"
-	DEFAULT_IPV4_ALLOW = '10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16'
-	DEFAULT_IPV6_ALLOW = 'fe80::/10'
-	DEFAULT_SEQUENCE_TIMEOUT = 10
-	DEFAULT_DOOR_TIMEOUT = 30
-
 	#
 	# Constructor parameters:
 	# - ipv:         One of IPTables.IPv4 or IPTables.IPv6, depending on
@@ -118,95 +73,36 @@ class IPTables:
 		}
 
 		# set up variables for things that differ between IPv4 and IPv6
-		if self.ipv == IPTables.IPv4:
+		if self.ipv == Config.IPv4:
 			self.iptables = "iptables"
 			self.iptables_save = "iptables-save"
-		elif self.ipv == IPTables.IPv6:
+		elif self.ipv == Config.IPv6:
 			self.iptables = "ip6tables"
 			self.iptables_save = "ip6tables-save"
 		else:
 			raise ValueError("Invalid ipv parameter: " + ipv)
 
-		# call LoadConfig to set other defaults, and load configuration file
-		if config_file:
-			self.LoadConfig(config_file)
-
-	#
-	# Load the configuration file. This initializes all the remaining
-	# variables in self, beyond what was initialized in the constructor.
-	#
-	def LoadConfig(self, config_file):
-		config = configparser.ConfigParser()
-		config.read(config_file)
-
-		# knock sequence:
-		# split on whitespace and convert each value to a PortSpec object
-		sequence = list(map(
-			lambda x: PortSpec(x),
-			config.get('knock', 'sequence', fallback='').split()
-		))
-
-		if not sequence:
-			raise ValueError('Configuration option "sequence" must be set under [knock]')
-
-		# knock timeout between each knock in knock_sequence
-		# default: 10
-		sequence_timeout = int(config.get('knock', 'sequence_timeout', fallback=IPTables.DEFAULT_SEQUENCE_TIMEOUT))
-
-		# the port to open after the knock sequence is received
-		door = PortSpec(config.get('knock', 'door', fallback='0'))
-
-		if not door.port:
-			raise ValueError('Configuration option "door" must be set under [knock]')
-
-		# how long the door stays open if no connection is received
-		# default: 30
-		door_timeout = int(config.get('knock', 'door_timeout', fallback=IPTables.DEFAULT_DOOR_TIMEOUT))
-
-
-		# allowed networks: each is a whitespace separate list
-		# default: all private addresses
-		ipv4_allow = config.get(
-			'ipv4',
-			'allow',
-			fallback='10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16'
-		).split()
-		ipv6_allow = config.get(
-			'ipv6',
-			'allow',
-			fallback='fe80::/10'
-		).split()
-
-		# save files where persistent rules are saved
-		ipv4_save = config.get(
-			'ipv4',
-			'save_file',
-			fallback=IPTables.DEFAULT_IPV4_SAVE
-		)
-		ipv6_save = config.get(
-			'ipv6',
-			'save_file',
-			fallback=IPTables.DEFAULT_IPV6_SAVE
-		)
+		# load configuration file
+		self.config = Config(config_file)
 
 		# set knocking ports and timeouts
-		self.SetKnockingPorts(knock_sequence=sequence, unlock_port=door)
-		self.SetTimeout(knock_timeout=sequence_timeout, final_timeout=door_timeout)
+		self.SetKnockingPorts(knock_sequence=self.config.sequence, unlock_port=self.config.door)
+		self.SetTimeout(knock_timeout=self.config.sequence_timeout, final_timeout=self.config.door_timeout)
 
 		# set IPv4/IPv6 specific options
-		if self.ipv == socket.AF_INET:
-			self.SetAllowedNetworks(ipv4_allow)
-			self.save_file = ipv4_save
-		elif self.ipv == socket.AF_INET6:
-			self.SetAllowedNetworks(ipv6_allow)
-			self.save_file = ipv6_save
+		if self.ipv == Config.IPv4:
+			self.SetAllowedNetworks(self.config.ipv4_allow)
+			self.save_file = self.config.iptables_save_file
+		elif self.ipv == Config.IPv6:
+			self.SetAllowedNetworks(self.config.ipv6_allow)
+			self.save_file = self.config.ip6tables_save_file
 
 	#
 	# Set ICMPv6 rules in iptables. These are required for IPv6 to work.
 	#
 	def SetICMPv6(self):
 		# As per RFC 4890 section 4.4.1
-		if self.ipv == IPTables.IPv6:
+		if self.ipv == Config.IPv6:
 			for icmpv6_type in [1, 2, 3, 4, 133, 134, 135, 136, 141, 142, 148, 149]:
 				self.AppendToChain("INPUT", [
 					"--protocol", "icmpv6",
@@ -224,9 +120,9 @@ class IPTables:
 		# Loop over each provided network, and verify it is valid by using
 		# the ipaddress module
 		for network in network_list:
-			if self.ipv == IPTables.IPv4:
+			if self.ipv == Config.IPv4:
 				n = ipaddress.IPv4Network(network)
-			elif self.ipv == IPTables.IPv6:
+			elif self.ipv == Config.IPv6:
 				n = ipaddress.IPv6Network(network)
 
 	#
