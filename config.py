@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-import getpass
-import sys
-import socket
 import configparser
+import getpass
+import ipaddress
+import socket
+import sys
 import traceback
 
 #
@@ -132,4 +133,20 @@ class Config:
 			'nftables_save_file',
 			fallback=''
 		)
+
+	#
+	# Verify that network_list is a valid list of IPv4 or IPv6 addresses,
+	# depending on the ipv parameter.
+	#
+	# If any address is invalid, the ipaddress module will raise an exception.
+	#
+	@staticmethod
+	def VerifyNetworks(ipv, network_list):
+		# Loop over each provided network, and verify it is valid by using
+		# the ipaddress module
+		for network in network_list:
+			if ipv == Config.IPv4:
+				n = ipaddress.IPv4Network(network)
+			elif ipv == Config.IPv6:
+				n = ipaddress.IPv6Network(network)
 

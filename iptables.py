@@ -2,7 +2,6 @@
 
 import sys
 import subprocess
-import ipaddress
 
 from config import Config, PortSpec
 
@@ -111,27 +110,12 @@ class IPTables:
 				])
 
 	#
-	# Verify that network_list is a valid list of IPv4 or IPv6 addresses,
-	# depending on self.ipv.
-	#
-	# If any address is invalid, the ipaddress module will raise an exception.
-	#
-	def VerifyNetworks(self, network_list):
-		# Loop over each provided network, and verify it is valid by using
-		# the ipaddress module
-		for network in network_list:
-			if self.ipv == Config.IPv4:
-				n = ipaddress.IPv4Network(network)
-			elif self.ipv == Config.IPv6:
-				n = ipaddress.IPv6Network(network)
-
-	#
 	# Allow self.allowed_networks to be overridden, and user-defined networks
 	# to be allowed in the INPUT chain. This method sets self.allowed_networks
 	# safely, calling VerifyNetworks() to check the addresses.
 	#
 	def SetAllowedNetworks(self, network_list):
-		self.VerifyNetworks(network_list)
+		Config.VerifyNetworks(self.ipv, network_list)
 
 		# all addresses were valid networks, so save the list
 		self.allowed_networks = network_list
@@ -142,7 +126,7 @@ class IPTables:
 	# ensure network_list contains valid addresses.
 	#
 	def AllowTransientNetworks(self, network_list):
-		self.VerifyNetworks(network_list)
+		Config.VerifyNetworks(self.ipv, network_list)
 
 		rules = []
 		for addr in network_list:
