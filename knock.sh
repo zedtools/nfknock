@@ -154,6 +154,9 @@ NMAP_ARGS=(-Pn --max-retries 0)
 #     --scan-delay is also provided, so provide a dummy value
 NMAP_TCP_ARGS=(--host-timeout 50ms --scan-delay 1ms)
 
+# Some networks drop empty UDP packets, so add some dummy data (0x00)
+NMAP_UDP_ARGS=(--data 00)
+
 # split the PORTS argument into individual ports
 IFS=',' read -r -a array <<< "$PORTS"
 for port in "${array[@]}"
@@ -163,19 +166,19 @@ do
 		# for a UDP port, set the nmap scan type to UDP
 		echo "Scanning UDP port: $port"
 		scantype=-sU
-		tcp_args=
+		scan_args=${NMAP_UDP_ARGS[@]}
 	else
 		# For a TCP port, set the scan type to TCP_SCANTYPE. By
 		# default (a blank value), this will cause nmap to attempt a
 		# TCP SYN scan, or fall back to a TCP connect scan if root privileges are missing.
 		echo "Scanning TCP port: $port"
 		scantype=$TCP_SCANTYPE
-		tcp_args=${NMAP_TCP_ARGS[@]}
+		scan_args=${NMAP_TCP_ARGS[@]}
 	fi
 
 	# Call nmap and then sleep DELAY seconds in between each knock.
 	# Note that if nmap needs to run as sudo (for -sS or -sU), and is not,
 	# it will print an error to stderr.
-	nmap $IPV6_FLAG $scantype ${NMAP_ARGS[@]} ${tcp_args[@]} -p $port $HOST >> /dev/null
+	nmap $IPV6_FLAG $scantype ${NMAP_ARGS[@]} ${scan_args[@]} -p $port $HOST >> /dev/null
 	sleep $DELAY
 done
