@@ -2,25 +2,38 @@
 
 import sys
 import subprocess
+import socket
+from typing import Optional
 
-from config import Config, PortSpec
+from base import Config, PortSpec, Firewall
 
-#
-# The main IPTables class.
-#
-# Call the constructor with a configuration file, the call the CreateAllRules()
-# to apply the iptables rules, followed by SavePersistent() to persist the
-# rules across reboots.
-#
-class IPTables:
-	#
-	# Constructor parameters:
-	# - ipv:         One of IPTables.IPv4 or IPTables.IPv6, depending on
-	#                whether IPv6 or IPv6 rules are to be created.
-	# - config_file: The path to the configuration file
-	#
-	def __init__(self, ipv, config_file):
+class IPTables(Firewall):
+	def __init__(self, ipv: socket.AddressFamily, config_file: str):
+		"""A class to create iptables/ip6tables rules for port knocking.
+
+		Call the constructor with a configuration file, the call the CreateAllRules()
+		to apply the iptables rules, followed by SavePersistent() to persist the
+		rules across reboots.
+
+		:param ipv: One of IPTables.IPv4 or IPTables.IPv6, depending on whether IPv6 or IPv6 rules are to be created
+		:type ipv: socket.AddressFamily
+		:param config_file: The path to the configuration file
+		:type config_file: str
+		:raises ValueError: [description]
+		"""
 		self.ipv = ipv
+
+		# set up variables for things that differ between IPv4 and IPv6
+		if self.ipv == Config.IPv4:
+			self.iptables = "iptables"
+			self.iptables_save = "iptables-save"
+		elif self.ipv == Config.IPv6:
+			self.iptables = "ip6tables"
+			self.iptables_save = "ip6tables-save"
+		else:
+			raise ValueError("Invalid ipv parameter: " + str(ipv))
+
+		super().__init__(config_file, self.iptables)
 
 		# iptables chains
 		self.FORWARD = "FORWARD"
@@ -53,8 +66,8 @@ class IPTables:
 		# on how many knocking ports there are
 		self.GATE_NAME = "GATE"
 		self.LABEL_NAME = "AUTH"
-		self.CUSTOM_GATE_CHAINS = [ ]
-		self.CUSTOM_AUTH_LABELS = [ ]
+		self.CUSTOM_GATE_CHAINS: list[str] = [ ]
+		self.CUSTOM_AUTH_LABELS: list[str] = [ ]
 
 		# the logging chains - each of these log the packet, then jump
 		# to the chain specified in self.log_target
@@ -71,35 +84,18 @@ class IPTables:
 			self.LOGDROP: "DROP"
 		}
 
-		# set up variables for things that differ between IPv4 and IPv6
-		if self.ipv == Config.IPv4:
-			self.iptables = "iptables"
-			self.iptables_save = "iptables-save"
-		elif self.ipv == Config.IPv6:
-			self.iptables = "ip6tables"
-			self.iptables_save = "ip6tables-save"
-		else:
-			raise ValueError("Invalid ipv parameter: " + ipv)
-
-		# load configuration file
-		self.config = Config(config_file)
-
 		# set knocking ports and timeouts
 		self.SetKnockingPorts(knock_sequence=self.config.sequence, unlock_port=self.config.door)
 		self.SetTimeout(knock_timeout=self.config.sequence_timeout, final_timeout=self.config.door_timeout)
 
 		# set IPv4/IPv6 specific options
 		if self.ipv == Config.IPv4:
-			self.SetAllowedNetworks(self.config.ipv4_allow)
-			self.save_file = self.config.iptables_save_file
+			self.allowed_networks = self.config.ipv4_allow
 		elif self.ipv == Config.IPv6:
-			self.SetAllowedNetworks(self.config.ipv6_allow)
-			self.save_file = self.config.ip6tables_save_file
+			self.allowed_networks = self.config.ipv6_allow
 
-	#
-	# Set ICMPv6 rules in iptables. These are required for IPv6 to work.
-	#
 	def SetICMPv6(self):
+		"""Set ICMPv6 rules in iptables. These are required for IPv6 to work."""
 		# As per RFC 4890 section 4.4.1
 		if self.ipv == Config.IPv6:
 			for icmpv6_type in [1, 2, 3, 4, 133, 134, 135, 136, 141, 142, 148, 149]:
@@ -109,32 +105,22 @@ class IPTables:
 					"--jump", "ACCEPT"
 				])
 
-	#
-	# Allow self.allowed_networks to be overridden, and user-defined networks
-	# to be allowed in the INPUT chain. This method sets self.allowed_networks
-	# safely, calling VerifyNetworks() to check the addresses.
-	#
-	def SetAllowedNetworks(self, network_list):
+	def AllowTransientNetworks(self, network_list: list[str]):
+		"""Temporarily allow connections from a network until the next reboot
+		(or when iptables rules are recreated again). VerifyNetworks() is
+		called to ensure network_list contains valid addresses.
+
+		:param network_list: List of networks to allow
+		:type network_list: list[str]
+		"""
 		Config.VerifyNetworks(self.ipv, network_list)
 
-		# all addresses were valid networks, so save the list
-		self.allowed_networks = network_list
-
-	#
-	# Temporarily allow connections from a network until the next reboot (or
-	# when iptables rules are recreated again). VerifyNetworks() is called to
-	# ensure network_list contains valid addresses.
-	#
-	def AllowTransientNetworks(self, network_list):
-		Config.VerifyNetworks(self.ipv, network_list)
-
-		rules = []
+		rules: list[list[str]] = []
 		for addr in network_list:
 			# Add each network to the self.PREKNOCK chain
 			rules.append([
 				"--source", addr, "--jump", self.LOGACCEPT_PREKNOCK
 			])
-
 
 		# Insert each rule at start of list in reverse order. This
 		# ensures that the rules appear in the same order as in the
@@ -143,24 +129,22 @@ class IPTables:
 		for rule in rules:
 			self.PrependToChain(self.PREKNOCK, rule)
 
-	#
-	# Initialize the PREKNOCK chain for the first time. This method can
-	# also be called to clear any previously added transient networks,
-	# which were added via AllowTransientNetworks().
-	#
 	def InitTransientNetworks(self):
+		"""Initialize the PREKNOCK chain for the first time. This method can
+		also be called to clear any previously added transient networks,
+		which were added via AllowTransientNetworks().
+		"""
 		self.RunIPTables(["--flush", self.PREKNOCK])
 		self.AppendToChain(self.PREKNOCK, [ "--jump", "RETURN" ])
 
-	#
-	# Initialize the sequence of knocking ports, and the final port to be
-	# unlocked.
-	# Parameters:
-	# - knock_sequence: A list PortSpec objects, each representing one knock
-	# - unlock_port:    The final port to be unlocked after the correct knock
-	#                   sequence
-	#
-	def SetKnockingPorts(self, knock_sequence=[], unlock_port=PortSpec("T:22")):
+	def SetKnockingPorts(self, knock_sequence: list[PortSpec] = [], unlock_port: PortSpec = PortSpec("T:22")):
+		"""Initialize the sequence of knocking ports, and the final port to be unlocked.
+
+		:param knock_sequence: A list PortSpec objects, each representing one knock, defaults to []
+		:type knock_sequence: list[PortSpec], optional
+		:param unlock_port: The final port to be unlocked after the correct knock sequence, defaults to PortSpec("T:22")
+		:type unlock_port: PortSpec, optional
+		"""
 		self.knock_sequence = knock_sequence
 		self.unlock_port = unlock_port
 
@@ -172,44 +156,32 @@ class IPTables:
 			self.CUSTOM_GATE_CHAINS.append(self.GATE_NAME + str(i + 1))
 			self.CUSTOM_AUTH_LABELS.append(self.LABEL_NAME + str(i + 1))
 
-	#
-	# Set the port knock timeouts.
-	# Parameters:
-	# - knock_timeout: The timeout, in seconds, between each port knock.
-	#                  If this timeout expires between knocks, the knock
-	#                  sequence is reset to the first knock.
-	# - final_timeout: The timeout, in seconds, for which self.unlock_port
-	#                  is open, after the entire knock sequence is received.
-	#                  This value prevents unlock_port from staying open
-	#                  indefinitely if no incoming connection is received.
-	#
-	def SetTimeout(self, knock_timeout, final_timeout):
+	def SetTimeout(self, knock_timeout: int, final_timeout: int):
+		"""Set the port knock timeouts.
+
+		:param knock_timeout: The timeout, in seconds, between each port knock. If this timeout expires between knocks, the knock sequence is reset to the first knock.
+		:type knock_timeout: int
+		:param final_timeout: The timeout, in seconds, for which self.unlock_port is open, after the entire knock sequence is received. This value prevents unlock_port from staying open indefinitely if no incoming connection is received.
+		:type final_timeout: int
+		"""
 		self.knock_timeout = knock_timeout
 		self.final_timeout = final_timeout
 
-	#
-	# Run iptables with the parameters provided in the params argument.
-	# params is an array of strings.
-	#
-	def RunIPTables(self, params):
+	def RunIPTables(self, params: list[str]):
+		"""Run iptables with the parameters provided in the params argument.
+
+		:param params: List of command-line parameters
+		:type params: list[str]
+		"""
 		print("Running: " + " ".join([self.iptables] + params))
 		subprocess.check_call([self.iptables] + params)
 
-	#
-	# Display all the iptables rules to stdout.
-	# If chain is provided, list only rules for that chain, otherwise for
-	# all chains
-	#
-	def DumpRules(self, chain=None):
-		if chain:
-			self.RunIPTables(["--list-rules", chain])
-		else:
-			self.RunIPTables(["--list-rules"])
+	def DumpRules(self):
+		"""Display all the iptables rules to stdout."""
+		self.RunIPTables(["--list-rules"])
 
-	#
-	# Save the iptables rules so that they persist across reboots.
-	#
 	def SavePersistent(self):
+		"""Save the iptables rules so that they persist across reboots."""
 		# zero the packet and byte counters, so that they are initalized
 		# to zero on each reboot
 		self.RunIPTables(["--zero"])
@@ -217,16 +189,15 @@ class IPTables:
 		# save the iptables rules
 		output = subprocess.check_output([self.iptables_save])
 
-		# write the iptables rules to self.save_file
-		with open(self.save_file, "w") as f:
+		# write the iptables rules to self.config.save_file
+		with open(self.config.save_file, "w") as f:
 			f.write(output.decode(sys.stdout.encoding))
 
-	#
-	# Flush all chains in iptables, and set the policy for built-in chains
-	# to ACCEPT. Other rules in the custom chains will drop packets if they
-	# do not meet the port knocking criteria.
-	#
 	def Flush(self):
+		"""Flush all chains in iptables, and set the policy for built-in chains
+		to ACCEPT. Other rules in the custom chains will drop packets if they
+		do not meet the port knocking criteria.
+		"""
 		for chain in self.BUILTIN_CHAINS:
 			self.RunIPTables(["--policy", chain, "ACCEPT"])
 
@@ -234,41 +205,46 @@ class IPTables:
 		self.RunIPTables(["--flush"])
 		self.RunIPTables(["--delete-chain"])
 
-	#
-	# Create a single chain in iptables
-	#
-	def CreateChain(self, chain):
+	def CreateChain(self, chain: str):
+		"""Create a single chain in iptables
+
+		:param chain: The name of the new chain
+		:type chain: str
+		"""
 		self.RunIPTables(["--new-chain", chain])
 
-	#
-	# Prepend (insert) a single rule to a chain. This is equivalent to running
-	# "iptables -I <chain> <rule...>".
-	# Parameters:
-	# - chain:     The chain to which the rule is to be appended
-	# - rule_list: An array of strings, representing the rule to add
-	#
-	def PrependToChain(self, chain, rule_list):
+	def PrependToChain(self, chain: str, rule_list: list[str]):
+		"""Prepend (insert) a single rule to a chain. This is equivalent to running:
+
+		iptables -I <chain> <rule...>
+
+		:param chain: The chain to which the rule is to be prepended
+		:type chain: str
+		:param rule_list: An array of strings, representing the rule to add
+		:type rule_list: list[str]
+		"""
 		self.RunIPTables(["--insert", chain] + rule_list)
 
-	#
-	# Append a single rule to a chain. This is equivalent to running
-	# "iptables -A <chain> <rule...>".
-	# Parameters:
-	# - chain:     The chain to which the rule is to be appended
-	# - rule_list: An array of strings, representing the rule to add
-	#
-	def AppendToChain(self, chain, rule_list):
+	def AppendToChain(self, chain: str, rule_list: list[str]):
+		"""Append a single rule to a chain. This is equivalent to running:
+
+		iptables -A <chain> <rule...>
+
+		:param chain: The chain to which the rule is to be appended
+		:type chain: str
+		:param rule_list: An array of strings, representing the rule to add
+		:type rule_list: list[str]
+		"""
 		self.RunIPTables(["--append", chain] + rule_list)
 
-	#
-	# Set up the logging chains. This logs the iptables command and chain
-	# which triggered the log, plus details of the packet.
-	#
-	# This is currently hardcoded with --limit 5/min. This prevents the
-	# log from being flooded, so keep in mind that some packets may not be
-	# logged during testing.
-	#
 	def SetupLogging(self):
+		"""Set up the logging chains. This logs the iptables command and chain
+		which triggered the log, plus details of the packet.
+
+		This is currently hardcoded with --limit 5/min. This prevents the
+		log from being flooded, so keep in mind that some packets may not be
+		logged during testing.
+		"""
 		# log prefix will consist of the iptables command and chain,
 		# e.g. "ip6tables-LOGDROP: "
 		# save the iptables/ip6tables command here, and add the chain later
@@ -292,17 +268,13 @@ class IPTables:
 			for rule in rules:
 				self.AppendToChain(chain, rule)
 
-	#
-	# Create all custom chains required for port knocking
-	#
 	def CreateChains(self):
+		"""Create all custom chains required for port knocking"""
 		for chain in self.CUSTOM_CHAINS + self.CUSTOM_GATE_CHAINS:
 			self.CreateChain(chain)
 
-	#
-	# Set up the base rules in the INPUT chain
-	#
 	def CreateLocalInputChainRules(self):
+		"""Set up the base rules in the INPUT chain"""
 		chain = self.INPUT
 
 		rules = [
@@ -338,34 +310,34 @@ class IPTables:
 		for rule in rules:
 			self.AppendToChain(chain, rule)
 
-	#
-	# Create the rules for an individual GATE. A packet must pass the checks in
-	# the gate, which means it must match the required protocol and port, and
-	# have the label prev_label set.
-	#
-	# If the checks pass, then either set new_label or jump to success_chain.
-	# Both the new_label and success_chain parameters cannot both be set.
-	#
-	# If the checks fail, jump to fail_chain.
-	#
-	# Parameters:
-	# - gate:          The name of the gate (the name of the iptables chain)
-	# - protocol:      A packet with this protcol must be received to pass this gate
-	# - port:          A packet with this port must be received to pass this gate
-	# - prev_label:    (Optional) Check for this label using the iptables recent
-	#                  module. If found, remove the label and proceed. If not
-	#                  found, do not pass this gate. If this parameter is not
-	#                  given, skip this check and proceed to the next check.
-	# - new_label:     (Optional) Set this label using the iptables recent module,
-	#                  and then drop the packet. If this parameter is set, then
-	#                  the success_chain must be None.
-	#                  If this paramter is not provided, drop the packet and log it.
-	# - fail_chain:    Jump to this chain if the packet fails the checks in this gate.
-	# - success_chain: (Optional) Jump to this chain if the packet passses the checks
-	#                  in this gate. If this parameter is set, then the new_label
-	#                  must be None.
-	#
-	def CreateGateRules(self, gate, protocol, port, prev_label=None, new_label=None, fail_chain=None, success_chain=None):
+	def CreateGateRules(self, gate: str, protocol: str, port: int, prev_label: Optional[str] = None, new_label: Optional[str] = None, fail_chain: Optional[str] = None, success_chain: Optional[str] = None):
+		"""Create the rules for an individual GATE. A packet must pass the checks in
+		the gate, which means it must match the required protocol and port, and
+		have the label prev_label set.
+
+		If the checks pass, then either set new_label or jump to success_chain.
+		Both the new_label and success_chain parameters cannot both be set.
+
+		If the checks fail, jump to fail_chain.
+
+		:param gate: The name of the gate (the name of the iptables chain)
+		:type gate: str
+		:param protocol: A packet with this protcol must be received to pass this gate
+		:type protocol: str
+		:param port: A packet with this port must be received to pass this gate
+		:type port: int
+		:param prev_label: Check for this label using the iptables recent module. If found, remove the label and proceed. If not found, do not pass this gate. If this parameter is not given, skip this check and proceed to the next check, defaults to None
+		:type prev_label: str, optional
+		:param new_label: Set this label using the iptables recent module, and then drop the packet. If this parameter is set, then the success_chain must be None. If this paramter is not provided, drop the packet and log it, defaults to None
+		:type new_label: str, optional
+		:param fail_chain: Jump to this chain if the packet fails the checks in this gate, defaults to None
+		:type fail_chain: str, optional
+		:param success_chain: Jump to this chain if the packet passses the checks in this gate. If this parameter is set, then the new_label must be None, defaults to None
+		:type success_chain: str, optional
+		:raises ValueError: If fail_chain is not specified
+		:raises ValueError: If neither new_label nor success_chain is specified
+		:raises ValueError: If both new_label and success_chain are specified
+		"""
 		strPort = str(port)
 
 		# Ensure fail_chain is specified
@@ -409,21 +381,23 @@ class IPTables:
 		# For any other port, go back to fail_chain
 		self.AppendToChain(gate, ["--jump", fail_chain])
 
-	#
-	# Check whether a knock (or the final packet) arrived in the time allowed.
-	# This is done by using the iptables recent module, and checking how long
-	# ago the previous gate's label was set.
-	#
-	# If the label was set less than timeout seconds ago, jump to new_chain,
-	# otherwise continue to the next rule.
-	#
-	# Parameters:
-	# - chain:     The chain in which to create the rule
-	# - timeout:   Timeout, in seconds. If label was set longer than
-	#              than this time ago, then consider the check failed
-	# - label:     Check for this label
-	# - new_chain: Jump to ths chain if the label is set
-	def CreateKnockRule(self, chain, timeout, label, new_chain):
+	def CreateKnockRule(self, chain: str, timeout: int, label: str, new_chain: str):
+		"""Check whether a knock (or the final packet) arrived in the time allowed.
+		This is done by using the iptables recent module, and checking how long
+		ago the previous gate's label was set.
+
+		If the label was set less than timeout seconds ago, jump to new_chain,
+		otherwise continue to the next rule.
+
+		:param chain: The chain in which to create the rule
+		:type chain: str
+		:param timeout: Timeout, in seconds. If label was set longer than than this time ago, then consider the check failed.
+		:type timeout: int
+		:param label: Check for this label
+		:type label: str
+		:param new_chain: Jump to ths chain if the label is set
+		:type new_chain: str
+		"""
 		self.AppendToChain(
 			chain, [
 				"--match", "recent",
@@ -434,12 +408,11 @@ class IPTables:
 			]
 		)
 
-	#
-	# This is where the knocking chains and rules are set up. This method
-	# contains the top-level logic for port knocking, and it calls all the
-	# other methods needed to set up the entire heirarchy of rules.
-	#
 	def CreateKnockingRules(self):
+		"""This is where the knocking chains and rules are set up. This method
+		contains the top-level logic for port knocking, and it calls all the
+		other methods needed to set up the entire heirarchy of rules.
+		"""
 		# port knocking rules:
 		# GATE1: This is where we start. We are waiting for the first port in the knocking sequence.
 		# GATE2: The first port has matched, and we are waiting for the second port.
@@ -524,28 +497,26 @@ class IPTables:
 		# from the start.
 		self.AppendToChain(self.KNOCKING, ["--jump", self.CUSTOM_GATE_CHAINS[0]])
 
-	#
-	# Create final rules needed after the port knocking rules and chains
-	# have been created, Currently this simply adds a rule to the INPUT
-	# chain to jump to the KNOCKING chain.
-	#
-	# It also appends a jump to LOGDROP as a fail-safe. This last rule
-	# should never be invoked, but it may be if there is a problem with the
-	# KNOCKING chain rules. Since the INPUT chain has a policy of ACCEPT,
-	# we do not want any packets accidentially slipping through.
-	#
 	def CreateFinalRules(self):
+		"""Create final rules needed after the port knocking rules and chains
+		have been created, Currently this simply adds a rule to the INPUT
+		chain to jump to the KNOCKING chain.
+
+		It also appends a jump to LOGDROP as a fail-safe. This last rule
+		should never be invoked, but it may be if there is a problem with the
+		KNOCKING chain rules. Since the INPUT chain has a policy of ACCEPT,
+		we do not want any packets accidentially slipping through.
+		"""
 		# Jump to the knocking chain to check for port knocks
 		self.AppendToChain(self.INPUT, ["--jump", self.KNOCKING])
 
 		# Drop everything else
 		self.AppendToChain(self.INPUT, ["--jump", self.LOGDROP])
 
-	#
-	# Top level method to create all the iptables rules. This includes the
-	# base rules, plus the rules specific to port knocking.
-	#
 	def CreateAllRules(self):
+		"""Top level method to create all the iptables rules. This includes the
+		base rules, plus the rules specific to port knocking.
+		"""
 		self.Flush()
 		self.CreateChains()
 		self.SetupLogging()
