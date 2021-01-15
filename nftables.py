@@ -79,7 +79,7 @@ class NFTables(Firewall):
 				# One or more $nft...  variables were not substituted.
 				# Raise an error with the list of (unique) variables names.
 				raise ValueError(f'Undefined variables in {self.conf_template}: {", ".join(set(match))}')
-			print(f'CreateAllRules():\n{data}')
+			self.rulelist = data
 
 	def DumpRules(self):
 		"""Display generated rules to stdout"""
