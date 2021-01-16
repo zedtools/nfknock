@@ -25,6 +25,6 @@ for fw in all_fw:
 
 		# prompt user to save rules
 		if base.input_verify("Do you wish to save this configuration to " + fw.config.save_file):
+			print("Saving configuration to " + fw.config.save_file)
 			fw.SavePersistent()
-			print("Configuration saved to " + fw.config.save_file)
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import string
+import subprocess
 import re
 
 from base import Config, PortSpec, Firewall
@@ -89,3 +90,19 @@ class NFTables(Firewall):
 		"""Write the nftables rules to self.config.save_file"""
 		with open(self.config.save_file, "w") as f:
 			f.write(self.rulelist)
+
+		# Check to ensure nftables service is enabled
+		try:
+			subprocess.check_call(['systemctl', '-q', 'is-enabled', 'nftables'])
+		except subprocess.CalledProcessError as cpe:
+			print("Enabling nftables service to load rules on boot")
+			subprocess.check_call(['systemctl', '-q', 'enable', 'nftables'])
+
+		# Load the saved rules into nftables
+		try:
+			cmd = ['nft', '-f', self.config.save_file]
+			print(f'Running {" ".join(cmd)} to load rules')
+			subprocess.check_call(['nft', '-f', self.config.save_file])
+		except subprocess.CalledProcessError as cpe:
+			print(f'Error loading nft rules (return code {cpe.returncode}. Please try running manually.')
+
