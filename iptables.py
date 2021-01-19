@@ -113,7 +113,7 @@ class IPTables(Firewall):
 		:param network_list: List of networks to allow
 		:type network_list: list[str]
 		"""
-		Config.VerifyNetworks(self.ipv, network_list)
+		network_list = Config.ParseNetworks(self.ipv, network_list)
 
 		rules: list[list[str]] = []
 		for addr in network_list:

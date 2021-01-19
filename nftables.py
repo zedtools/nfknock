@@ -24,11 +24,6 @@ class NFTables(Firewall):
 		# Initalize an empty rulelist
 		self.rulelist = ''
 
-		Config.VerifyNetworks(Config.IPv4, self.config.ipv4_allow) # list of string
-		Config.VerifyNetworks(Config.IPv6, self.config.ipv6_allow) # list of string
-
-		# use the above to generate nftables rules
-
 	def DecrementMap(self):
 		"""Return the values to be used in the "decrement map" in nftables.conf.
 		This returns "..., 0x3:2, 0x2:1, 0x1:0", with enough entries to cover

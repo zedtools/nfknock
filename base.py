@@ -134,20 +134,22 @@ class Config:
 
 		# allowed networks: each is a whitespace separate list
 		# default: all private addresses
-		self.ipv4_allow = config.get(
-			'ipv4',
-			'allow',
-			fallback='10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16'
-		).split()
-		self.ipv6_allow = config.get(
-			'ipv6',
-			'allow',
-			fallback='fe80::/10'
-		).split()
-
-		# verify allowed networks are valid syntax
-		Config.VerifyNetworks(Config.IPv4, self.ipv4_allow)
-		Config.VerifyNetworks(Config.IPv6, self.ipv6_allow)
+		self.ipv4_allow = self.ParseNetworks(
+			Config.IPv4,
+			config.get(
+				'ipv4',
+				'allow',
+				fallback='10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16'
+			).split()
+		)
+		self.ipv6_allow = self.ParseNetworks(
+			Config.IPv6,
+			config.get(
+				'ipv6',
+				'allow',
+				fallback='fe80::/10'
+			).split()
+		)
 
 		# save file where persistent rules are saved
 		self.save_file = config.get(
@@ -156,30 +158,31 @@ class Config:
 			fallback=''
 		)
 
-	#
-	# Verify that network_list is a valid list of IPv4 or IPv6 addresses,
-	# depending on the ipv parameter.
-	#
-	# If any address is invalid, the ipaddress module will raise an exception.
-	#
 	@staticmethod
-	def VerifyNetworks(ipv, network_list):
-		"""Verify that network_list is a valid list of IPv4 or IPv6 addresses, depending on the ipv parameter.
+	def ParseNetworks(ipv, network_list):
+		"""Check that network_list is a valid list of IPv4 or IPv6 addresses, depending on the ipv parameter.
 
-		If any address is invalid, the ipaddress module will raise an exception.
+		If any address is invalid, the ipaddress module will raise an exception. Any string format supported by the ipaddress module is allowed.
+
+		A list of strings is returned in slash notation (e.g. 192.168.1.0/24), regardless of how the input was formatted.
 
 		:param ipv: One of Config.IPv4 or Config.IPv6
 		:type ipv: socket.AddressFamily
 		:param network_list: List of networks to verify
 		:type network_list: list[str]
+		:return: A list of strings in slash notation sorted by network
+		:rtype: list[str]
 		"""
 		# Loop over each provided network, and verify it is valid by using
 		# the ipaddress module
-		for network in network_list:
-			if ipv == Config.IPv4:
-				_n = ipaddress.IPv4Network(network)
-			elif ipv == Config.IPv6:
-				_n = ipaddress.IPv6Network(network)
+		if ipv == Config.IPv4:
+			net_list = [ipaddress.IPv4Network(net) for net in network_list]
+		elif ipv == Config.IPv6:
+			net_list = [ipaddress.IPv6Network(net) for net in network_list]
+		else:
+			raise ValueError(f'Invalid value for ipv parameter: {ipv}')
+
+		return [str(net) for net in sorted(net_list) ]
 
 class Firewall(ABC):
 	def __init__(self, config_file: str, firewall: str):
