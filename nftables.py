@@ -24,18 +24,6 @@ class NFTables(Firewall):
 		# Initalize an empty rulelist
 		self.rulelist = ''
 
-	def DecrementMap(self):
-		"""Return the values to be used in the "decrement map" in nftables.conf.
-		This returns "..., 0x3:2, 0x2:1, 0x1:0", with enough entries to cover
-		the highest knock number.
-		"""
-		values: list[str] = []
-
-		for i in range(len(self.config.sequence), 0, -1):
-			values.append(f'{hex(i)}:{i-1}')
-
-		return ", ".join(values)
-
 	def KnockRules(self, prefix: str = '\t\t'):
 		"""Return a multi-line string with the knock rules. Each line is indented by prefix.
 
@@ -53,16 +41,21 @@ class NFTables(Firewall):
 
 	def CreateAllRules(self):
 		"""Create the complete set of nftables rules based on loaded configuration."""
+		num_knocks = len(self.config.sequence)
+		if num_knocks >= 8:
+			# nftables.conf uses a custom algorithm (decrement_ct_mark),
+			# which limits the number of knocks allowed.
+			raise ValueError(f'nftables.conf supports 7 knocks, {num_knocks} knocks requested')
+
 		with open(self.conf_template) as f:
 			# Load the templace configuration and substitute variables names
 			template = string.Template(f.read())
 			data = template.safe_substitute(
 				nfk_allow_ipv4=", ".join(self.config.ipv4_allow),
 				nfk_allow_ipv6=", ".join(self.config.ipv6_allow),
-				nfk_decrement_map=self.DecrementMap(),
 				nfk_knock_timeout=self.config.sequence_timeout,
 				nfk_knock_rules=self.KnockRules(),
-				nfk_last_knock=len(self.config.sequence),
+				nfk_last_knock=num_knocks,
 				nfk_allow_protocol=self.config.door.protocol,
 				nfk_allow_port=self.config.door.port,
 				nfk_allow_timeout=self.config.door_timeout,
