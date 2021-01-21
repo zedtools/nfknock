@@ -23,29 +23,34 @@ will get a notification as soon as this first layer is penerated, allowing you
 to change the port-knock sequence.
 
 Requirements:
-- python 3.3+ (tested with python 3.4)
+- python 3.7+
 
 Requirements for iptables:
 - iptables
 - iptables-persistent (for Debian-based systems)
 
 Requirements for nftables:
-- nftables
+- nftables 0.9.3
+- Linux kernel 5.4
+
+On Debian 10, install the following from backports to have the latest versions:
+
+`sudo apt install -t buster-backports nftables linux-image-amd64`
 
 The following are additional requirements for logging:
 - S-nail
 - mawk
 - whois
 
-On Debian 9, some of these are already present. Missing requirements can be installed by:
-- sudo apt-get install s-nail whois
+On Debian 10, some of these are already present. Missing requirements can be installed by:
+- sudo apt install s-nail whois
 
 For the cfg files below, sample cfg files can be found under the directory cfg-sample.
 
 Port knocking setup instructions:
-1. Edit nfknock.cfg to edit port knocking configuration.
-2. Run nftables-knock.py or iptables-knock.py as root or with sudo. This will
-   automatically set up the firewall.
+1. Copy cfg-sample/nfknock.cfg to nfknock.cfg.
+2. Edit nfknock.cfg to edit port knocking configuration.
+3. Run nfknock.py as root or with sudo. This will automatically set up the firewall.
 
 To temporarily allow networks without adding them to nfknock.cfg, use the command transient.py.
 
