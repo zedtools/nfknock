@@ -3,6 +3,10 @@
 import iptables
 import argparse
 import sys
+from typing import List
+
+import base
+import nftables
 
 # create the argument parser
 parser = argparse.ArgumentParser(description='Allow connections from remote addresses without requiring a port knock. Any networks added via this command are transient, and will not persist across reboots, or if the port knocking configuration is reapplied from the configuration file.')
@@ -14,11 +18,15 @@ parser.add_argument('-l', '--list', action='store_true', help='List all currentl
 args = parser.parse_args()
 
 # verify we are running as root (needed to modify iptables rules)
-iptables.CheckRoot()
+base.CheckRoot()
 
-# create IPTables objects
-ip4 = iptables.IPTables(iptables.IPTables.IPv4, config_file=None)
-ip6 = iptables.IPTables(iptables.IPTables.IPv6, config_file=None)
+# create IPTables and NFTables objects, and load configuration file
+config_file = 'nfknock.cfg'
+all_fw: List[base.Firewall] = [fw for fw in [
+	iptables.IPTables(base.Config.IPv4, config_file),
+	iptables.IPTables(base.Config.IPv6, config_file),
+	nftables.NFTables(config_file),
+] if fw.config.save_file]
 
 # parse each --add argument
 add_ipv4 = []
@@ -35,18 +43,12 @@ for network in args.add:
 		sys.exit(1)
 
 # perform actions based on command line arguments
-if args.flush:
-	# delete all existing transient networks
-	ip4.InitTransientNetworks()
-	ip6.InitTransientNetworks()
-if add_ipv4:
-	# one or more IPv4 networks to add
-	ip4.AllowTransientNetworks(add_ipv4)
-if add_ipv6:
-	# one or more IPv6 networks to add
-	ip6.AllowTransientNetworks(add_ipv6)
-if args.list:
-	print('IPv4 Rules:')
-	ip4.DumpRules(chain=ip4.PREKNOCK)
-	print('\nIPv6 Rules:')
-	ip6.DumpRules(chain=ip6.PREKNOCK)
+for fw in all_fw:
+	if args.flush:
+		# delete all existing transient networks
+		fw.InitTransientNetworks()
+	if add_ipv4 or add_ipv6:
+		# one or more I Pv4/IPv6 networks to add
+		fw.AllowTransientNetworks(ipv4_list=add_ipv4, ipv6_list=add_ipv6)
+	if args.list:
+		fw.DumpTransientNetworks()

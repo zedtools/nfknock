@@ -105,15 +105,30 @@ class IPTables(Firewall):
 					"--jump", "ACCEPT"
 				])
 
-	def AllowTransientNetworks(self, network_list: List[str]):
-		"""Temporarily allow connections from a network until the next reboot
-		(or when iptables rules are recreated again). VerifyNetworks() is
-		called to ensure network_list contains valid addresses.
 
-		:param network_list: List of networks to allow
-		:type network_list: list[str]
+	def InitTransientNetworks(self):
+		"""Initialize the PREKNOCK chain for the first time. This method can
+		also be called to clear any previously added transient networks,
+		which were added via AllowTransientNetworks().
 		"""
-		network_list = Config.ParseNetworks(self.ipv, network_list)
+		self.RunIPTables(["--flush", self.PREKNOCK])
+		self.AppendToChain(self.PREKNOCK, [ "--jump", "RETURN" ])
+
+	def AllowTransientNetworks(self, ipv4_list: List[str] = [], ipv6_list: List[str] = []):
+		"""Temporarily allow connections from a network until the next reboot
+		(or when firewall rules are reloaded).
+
+		:param ipv4_list: List of IPv4 networks to allow
+		:type ipv4_list: list[str]
+		:param ipv6_list: List of IPv6 networks to allow
+		:type ipv6_list: list[str]
+		"""
+		if self.ipv == Config.IPv4:
+			network_list = Config.ParseNetworks(self.ipv, ipv4_list)
+		elif self.ipv == Config.IPv6:
+			network_list = Config.ParseNetworks(self.ipv, ipv6_list)
+		else:
+			network_list: List[str] = []
 
 		rules: List[List[str]] = []
 		for addr in network_list:
@@ -129,13 +144,9 @@ class IPTables(Firewall):
 		for rule in rules:
 			self.PrependToChain(self.PREKNOCK, rule)
 
-	def InitTransientNetworks(self):
-		"""Initialize the PREKNOCK chain for the first time. This method can
-		also be called to clear any previously added transient networks,
-		which were added via AllowTransientNetworks().
-		"""
-		self.RunIPTables(["--flush", self.PREKNOCK])
-		self.AppendToChain(self.PREKNOCK, [ "--jump", "RETURN" ])
+	def DumpTransientNetworks(self):
+		"""List currently configured transient networks"""
+		self.RunIPTables(["--list-rules", self.PREKNOCK])
 
 	def SetKnockingPorts(self, knock_sequence: List[PortSpec] = [], unlock_port: PortSpec = PortSpec("T:22")):
 		"""Initialize the sequence of knocking ports, and the final port to be unlocked.

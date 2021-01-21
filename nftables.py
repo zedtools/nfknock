@@ -3,11 +3,14 @@
 import string
 import subprocess
 import re
+from typing import List
 
 from base import Config, PortSpec, Firewall
 
 class NFTables(Firewall):
 	conf_template = 'templates/nftables.conf'
+	TRANSIENT_IPV4_SET = ['inet', 'filter', 'transient_ipv4']
+	TRANSIENT_IPV6_SET = ['inet', 'filter', 'transient_ipv6']
 
 	def __init__(self, config_file: str):
 		"""A class to generate nftables rules for port knocking.
@@ -94,3 +97,42 @@ class NFTables(Firewall):
 		except subprocess.CalledProcessError as cpe:
 			print(f'Error loading nft rules (return code {cpe.returncode}. Please try running manually.')
 
+	def RunNFT(self, params: List[str]):
+		"""Run nft with the parameters provided in the params argument.
+
+		:param params: List of command-line parameters
+		:type params: list[str]
+		"""
+		print("Running: nft " + " ".join(params))
+		subprocess.check_call(['nft'] + params)
+
+	def InitTransientNetworks(self) -> None:
+		"""Initialize the list of transient networks for the first time.
+		This method can also be called to clear any previously added transient
+		networks, which were added via AllowTransientNetworks().
+		"""
+		self.RunNFT(['flush', 'set', *self.TRANSIENT_IPV4_SET])
+		self.RunNFT(['flush', 'set', *self.TRANSIENT_IPV6_SET])
+
+	def AllowTransientNetworks(self, ipv4_list: List[str], ipv6_list: List[str]):
+		"""Temporarily allow connections from a network until the next reboot
+		(or when firewall rules are reloaded).
+
+		:param ipv4_list: List of IPv4 networks to allow
+		:type ipv4_list: list[str]
+		:param ipv6_list: List of IPv6 networks to allow
+		:type ipv6_list: list[str]
+		"""
+		parsed_ipv4 = Config.ParseNetworks(Config.IPv4, ipv4_list)
+		parsed_ipv6 = Config.ParseNetworks(Config.IPv6, ipv6_list)
+
+		if parsed_ipv4:
+			self.RunNFT(['add', 'element', *self.TRANSIENT_IPV4_SET, '{', ",".join(parsed_ipv4), '}'])
+		if parsed_ipv6:
+			self.RunNFT(['add', 'element', *self.TRANSIENT_IPV6_SET, '{', ",".join(parsed_ipv6), '}'])
+		pass
+
+	def DumpTransientNetworks(self):
+		"""List currently configured transient networks"""
+		self.RunNFT(['list', 'set', *self.TRANSIENT_IPV4_SET])
+		self.RunNFT(['list', 'set', *self.TRANSIENT_IPV6_SET])
