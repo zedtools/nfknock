@@ -50,7 +50,8 @@ For the cfg files below, sample cfg files can be found under the directory cfg-s
 Port knocking setup instructions:
 1. Copy cfg-sample/nfknock.cfg to nfknock.cfg.
 2. Edit nfknock.cfg to edit port knocking configuration.
-3. Run nfknock.py as root or with sudo. This will automatically set up the firewall.
+3. Run nfknock.py as root or with sudo. This will automatically set up the firewall, including
+   enabling the nftables service if needed.
 
 To temporarily allow networks without adding them to nfknock.cfg, use the command transient.py.
 
