@@ -79,7 +79,7 @@ class PortSpec:
 
 class Config:
 	"""An class to load a configuration file"""
-	DEFAULT_IPV4_ALLOW = '10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16'
+	DEFAULT_IPV4_ALLOW = '10.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16'
 	DEFAULT_IPV6_ALLOW = 'fe80::/10'
 	DEFAULT_SEQUENCE_TIMEOUT = 10
 	DEFAULT_DOOR_TIMEOUT = 30
@@ -139,7 +139,7 @@ class Config:
 			config.get(
 				'ipv4',
 				'allow',
-				fallback='10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16'
+				fallback=Config.DEFAULT_IPV4_ALLOW
 			).split()
 		)
 		self.ipv6_allow = self.ParseNetworks(
@@ -147,7 +147,7 @@ class Config:
 			config.get(
 				'ipv6',
 				'allow',
-				fallback='fe80::/10'
+				fallback=Config.DEFAULT_IPV6_ALLOW
 			).split()
 		)
 
