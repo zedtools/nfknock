@@ -3,7 +3,7 @@
 import sys
 import subprocess
 import socket
-from typing import Optional
+from typing import List, Optional
 
 from base import Config, PortSpec, Firewall
 
@@ -66,8 +66,8 @@ class IPTables(Firewall):
 		# on how many knocking ports there are
 		self.GATE_NAME = "GATE"
 		self.LABEL_NAME = "AUTH"
-		self.CUSTOM_GATE_CHAINS: list[str] = [ ]
-		self.CUSTOM_AUTH_LABELS: list[str] = [ ]
+		self.CUSTOM_GATE_CHAINS: List[str] = [ ]
+		self.CUSTOM_AUTH_LABELS: List[str] = [ ]
 
 		# the logging chains - each of these log the packet, then jump
 		# to the chain specified in self.log_target
@@ -105,7 +105,7 @@ class IPTables(Firewall):
 					"--jump", "ACCEPT"
 				])
 
-	def AllowTransientNetworks(self, network_list: list[str]):
+	def AllowTransientNetworks(self, network_list: List[str]):
 		"""Temporarily allow connections from a network until the next reboot
 		(or when iptables rules are recreated again). VerifyNetworks() is
 		called to ensure network_list contains valid addresses.
@@ -115,7 +115,7 @@ class IPTables(Firewall):
 		"""
 		network_list = Config.ParseNetworks(self.ipv, network_list)
 
-		rules: list[list[str]] = []
+		rules: List[List[str]] = []
 		for addr in network_list:
 			# Add each network to the self.PREKNOCK chain
 			rules.append([
@@ -137,7 +137,7 @@ class IPTables(Firewall):
 		self.RunIPTables(["--flush", self.PREKNOCK])
 		self.AppendToChain(self.PREKNOCK, [ "--jump", "RETURN" ])
 
-	def SetKnockingPorts(self, knock_sequence: list[PortSpec] = [], unlock_port: PortSpec = PortSpec("T:22")):
+	def SetKnockingPorts(self, knock_sequence: List[PortSpec] = [], unlock_port: PortSpec = PortSpec("T:22")):
 		"""Initialize the sequence of knocking ports, and the final port to be unlocked.
 
 		:param knock_sequence: A list PortSpec objects, each representing one knock, defaults to []
@@ -167,7 +167,7 @@ class IPTables(Firewall):
 		self.knock_timeout = knock_timeout
 		self.final_timeout = final_timeout
 
-	def RunIPTables(self, params: list[str]):
+	def RunIPTables(self, params: List[str]):
 		"""Run iptables with the parameters provided in the params argument.
 
 		:param params: List of command-line parameters
@@ -213,7 +213,7 @@ class IPTables(Firewall):
 		"""
 		self.RunIPTables(["--new-chain", chain])
 
-	def PrependToChain(self, chain: str, rule_list: list[str]):
+	def PrependToChain(self, chain: str, rule_list: List[str]):
 		"""Prepend (insert) a single rule to a chain. This is equivalent to running:
 
 		iptables -I <chain> <rule...>
@@ -225,7 +225,7 @@ class IPTables(Firewall):
 		"""
 		self.RunIPTables(["--insert", chain] + rule_list)
 
-	def AppendToChain(self, chain: str, rule_list: list[str]):
+	def AppendToChain(self, chain: str, rule_list: List[str]):
 		"""Append a single rule to a chain. This is equivalent to running:
 
 		iptables -A <chain> <rule...>
