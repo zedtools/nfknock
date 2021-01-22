@@ -5,7 +5,7 @@
 #
 
 # scan for any accepted connections
-/iptables-LOGACCEPT/ || /ip6tables-LOGACCEPT/ {
+/iptables-LOGACCEPT/ || /ip6tables-LOGACCEPT/ || /NFT#knock-accepted/ || /NFT#transient-accepted/ {
 	# work out the source IP by getting the "SRC=..." value from the log
 	ip="Unknown"
 	if (match($0, "SRC=[A-za-z0-9.:]+")) {
@@ -14,11 +14,11 @@
 		ip = pattern
 	}
 
-	msg="Unexpected LOGACCEPT entry"
-	if (match($0, "LOGACCEPTKNOCK")) {
+	msg="Unexpected log entry"
+	if (match($0, /LOGACCEPTKNOCK|NFT#knock-accepted/)) {
 		msg="Received successful knock"
 	}
-	else if (match($0, "LOGACCEPTPREKNOCK")) {
+	else if (match($0, /LOGACCEPTPREKNOCK|NFT#transient-accepted/)) {
 		msg="Allowed connection from transient network"
 	}
 

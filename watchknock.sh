@@ -11,4 +11,4 @@
 
 BASEDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-tail -F /var/log/syslog | mawk -W interactive -v BASEDIR=$BASEDIR -f $BASEDIR/watchknock.awk &
+tail -F /var/log/syslog -n 0 | mawk -W interactive -v BASEDIR=$BASEDIR -f $BASEDIR/watchknock.awk &
