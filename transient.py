@@ -17,6 +17,10 @@ parser.add_argument('-l', '--list', action='store_true', help='List all currentl
 # parse command line arguments
 args = parser.parse_args()
 
+if len(sys.argv) == 1:
+	parser.print_help()
+	sys.exit(1)
+
 # verify we are running as root (needed to modify iptables rules)
 base.CheckRoot()
 
