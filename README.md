@@ -33,16 +33,12 @@ Requirements for nftables:
 - nftables 0.9.3
 - Linux kernel 5.4
 
-On Debian 10, install the following from backports to have the latest versions:
-
-`sudo apt install -t buster-backports nftables linux-image-amd64`
-
 The following are additional requirements for logging:
 - S-nail
 - mawk
 - whois
 
-On Debian 10, some of these are already present. Missing requirements can be installed by:
+On Debian 11, some of these are already present. Missing requirements can be installed by:
 - sudo apt install s-nail whois
 
 For the cfg files below, sample cfg files can be found under the directory cfg-sample.
@@ -56,12 +52,16 @@ Port knocking setup instructions:
 To temporarily allow networks without adding them to nfknock.cfg, use the command transient.py.
 
 For logging, complete the following additional steps:
-1. Edit logmail.cfg and configure your email settings
-2. Configure watchknock.sh to run on boot. The easiest way to do this is to
-   add it to /etc/rc.local on Debian, though this may vary by platform. You
-   can run as a limited user, as long as that user has read access to the
-   syslog. Use sudo with the -u option to run as a different user.
-3. Start watchknock.sh manually or reboot to start logging.
+1. Copy cfg-sample/logmail.cfg to logmail.cfg.
+2. Edit logmail.cfg and configure your email settings.
+3. Configure watchknock.sh to run on boot. You can run it as a limited user, as long
+   as that user has read access to the syslog. The easiest way to achieve this on
+   Debian is:
+   1. Create a limited user and add that user to the adm group (for syslog access):
+      * sudo usermod -aG adm *username*
+   2. Add the following to /etc/rc.local:
+      * sudo -u *username* /path/to/.../watchknock.sh
+4. Start watchknock.sh manually or reboot to start logging.
 
-One the server is configured, you can use the client script knock.sh to do the
+Once the server is configured, you can use the client script knock.sh to do the
 port knock.
